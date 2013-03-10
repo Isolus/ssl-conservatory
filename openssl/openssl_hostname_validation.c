@@ -20,6 +20,83 @@
 #define HOSTNAME_MAX_SIZE 255
 
 /**
+ * Compares the name from the certificate (including wildcards) with a hostname
+ * based on RFC 2818.
+ * Note that a hostname may have a trailing dot.
+ *
+ * Returns 0 if they match.
+ * Returns 1 if no match is possible.
+ */
+static int compare_hostname(const char *certname, const char *hostname) {
+    
+	const char *tmp;
+	int res = 0;
+    
+	while ( !res ) {
+        
+		if ( *certname == '*' ) {
+            
+			tmp = hostname;
+            
+			while (1) {
+				if ( (*tmp == '.') || (*tmp == '\0') ) {
+					if ( (*(certname + 1) == '.') || (*(certname + 1) == '\0') ) {
+						hostname = tmp - 1;
+						res = 0;
+					}
+					else {
+						res = 1;
+					}
+                    break;
+				}
+				else if ( compare_hostname(certname + 1, tmp) ) {
+					tmp++;
+				}
+				else {
+					hostname = tmp - 1;
+					res = 0;
+					goto end;
+				}
+                
+			}
+            
+		}
+        else if ( *hostname == '\0' ) {
+            
+            res = ( *hostname != *certname );
+			break;
+            
+        }
+		else if ( *certname == '\0' ) {
+            
+            if ( (*hostname == '.') && (*(hostname + 1) == '\0' ) ) {
+                res = 0;
+            }
+            else {
+                res = 1;
+            }
+            
+			break;
+            
+		}
+		else if ( tolower(*certname) != tolower(*hostname) ) {
+            
+			res = 1;
+			break;
+            
+		}
+        
+		certname++;
+		hostname++;
+        
+	}
+    
+end:
+	return res;
+    
+}
+
+/**
 * Tries to find a match for hostname in the certificate's Common Name field.
 *
 * Returns MatchFound if a match was found.
@@ -58,7 +135,7 @@ static HostnameValidationResult matches_common_name(const char *hostname, const 
 	}
 
 	// Compare expected hostname with the CN
-	if (strcasecmp(hostname, common_name_str) == 0) {
+	if (compare_hostname(common_name_str, hostname) == 0) {
 		return MatchFound;
 	}
 	else {
@@ -102,7 +179,7 @@ static HostnameValidationResult matches_subject_alternative_name(const char *hos
 				break;
 			}
 			else { // Compare expected hostname with the DNS name
-				if (strcasecmp(hostname, dns_name) == 0) {
+				if (compare_hostname(dns_name, hostname) == 0) {
 					result = MatchFound;
 					break;
 				}
